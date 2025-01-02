@@ -1,5 +1,5 @@
 # 编译阶段
-FROM node:20.14.0-alpine AS build
+FROM node:20.17.0-alpine AS build
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
   rm -rf /var/cache/apk/* /tmp/*
 
 # 运行阶段
-FROM node:20.14.0-alpine AS runner
+FROM node:20.17.0-alpine AS runner
 
 ENV TZ="Asia/Shanghai" \
   NODE_ENV=production
