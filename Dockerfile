@@ -10,7 +10,7 @@ ENV NPM_CONFIG_LOGLEVEL=error
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
 # 合并RUN命令，更新依赖，设置镜像源，安装依赖，然后清理
-RUN apk update && \
+RUN apk update && apk upgrade && \
     sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
     npm config set registry https://registry.npmmirror.com && \
     apk add --no-cache --virtual .build-deps git && \
@@ -19,7 +19,6 @@ RUN apk update && \
     npm cache clean --force && \
     apk del .build-deps && \
     rm -rf /var/cache/apk/* /tmp/*
-
 
 # 运行阶段
 FROM node:20.17.0-alpine AS runner
