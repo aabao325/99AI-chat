@@ -59,6 +59,10 @@ __decorate([
     __metadata("design:type", String)
 ], ChatLogEntity.prototype, "answer", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ comment: 'Canvas 存储的内容', type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], ChatLogEntity.prototype, "canvasContent", void 0);
+__decorate([
     (0, typeorm_1.Column)({ comment: '提问的token', nullable: true }),
     __metadata("design:type", Number)
 ], ChatLogEntity.prototype, "promptTokens", void 0);

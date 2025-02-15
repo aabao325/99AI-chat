@@ -18,47 +18,245 @@ let OpenAIChatService = class OpenAIChatService {
     constructor(globalConfigService) {
         this.globalConfigService = globalConfigService;
     }
-    async openAIChat(messagesHistory, inputs) {
-        const { onFailure, onProgress, apiKey, model, proxyUrl, modelName, timeout, chatId, isFileUpload, modelAvatar, temperature, abortController, } = inputs;
+    async openAIChat(messagesHistory, inputs, agentMessages) {
+        var _a;
+        const { onFailure, onProgress, apiKey, model, proxyUrl, modelName, timeout, chatId, isFileUpload, modelAvatar, temperature, abortController, prompt, usingDeepThinking, deepThinkingModel, deepThinkingUrl, deepThinkingKey, } = inputs;
         let result = {
             text: '',
+            answer: '',
+            canvasText: '',
+            canvasContent: '',
             model: '',
             modelName: modelName,
             chatId: chatId,
-            answer: '',
             errMsg: '',
             modelAvatar: modelAvatar,
         };
-        const data = Object.assign({ model, messages: messagesHistory }, (isFileUpload === 2 && { max_tokens: 2048 }));
-        data.stream = true;
-        data.temperature = temperature;
-        const options = {
-            method: 'POST',
-            url: `${proxyUrl}/v1/chat/completions`,
-            responseType: 'stream',
-            timeout: timeout,
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${apiKey}`,
-            },
-            data: data,
-        };
-        const sanitizedOptions = await this.sanitizeOptionsForLogging(options);
-        console.log('请求配置:', JSON.stringify(sanitizedOptions, null, 2), 'ChatService');
-        console.log('请求配置:', JSON.stringify(sanitizedOptions, null, 2), 'ChatService');
         try {
-            const response = await (0, axios_1.default)(options);
-            const stream = response.data;
+            if (agentMessages && agentMessages.length > 0) {
+                const firstStreamData = {
+                    model,
+                    messages: agentMessages,
+                    stream: true,
+                    temperature,
+                };
+                const firstStreamOptions = {
+                    method: 'POST',
+                    url: `${proxyUrl}/v1/chat/completions`,
+                    responseType: 'stream',
+                    timeout,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${apiKey}`,
+                    },
+                    data: firstStreamData,
+                };
+                common_1.Logger.log('First Stream Request:', JSON.stringify(firstStreamOptions, null, 2));
+                const firstResponse = await (0, axios_1.default)(firstStreamOptions);
+                const firstStream = firstResponse.data;
+                let buffer = '';
+                await new Promise((resolve, reject) => {
+                    firstStream.on('data', (chunk) => {
+                        buffer += chunk.toString();
+                        let lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        lines.forEach((line) => {
+                            var _a, _b, _c;
+                            if (line.trim() === 'data: [DONE]') {
+                                resolve(result);
+                                return;
+                            }
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const cleanedLine = line.slice(6).trim();
+                                    if (cleanedLine) {
+                                        const jsonLine = JSON.parse(cleanedLine);
+                                        const content = ((_c = (_b = (_a = jsonLine.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.delta) === null || _c === void 0 ? void 0 : _c.content) || '';
+                                        result.canvasText = content;
+                                        result.canvasContent += content;
+                                        onProgress === null || onProgress === void 0 ? void 0 : onProgress({
+                                            text: result.text,
+                                            answer: result.answer,
+                                            canvasText: result.canvasText,
+                                            content: result.content,
+                                        });
+                                    }
+                                }
+                                catch (error) {
+                                    common_1.Logger.error('解析第一个流失败:', line, error);
+                                }
+                            }
+                        });
+                    });
+                    firstStream.on('end', () => resolve(result));
+                    firstStream.on('error', reject);
+                    abortController.signal.addEventListener('abort', () => resolve(result));
+                });
+            }
+            let thinkContent = '';
+            let isThinkStreamResolved = false;
+            if (usingDeepThinking ||
+                model.includes('deepseek-r1') ||
+                model.includes('deepseek-reasoner')) {
+                const deepUrl = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
+                    ? proxyUrl
+                    : deepThinkingUrl;
+                const deepKey = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
+                    ? apiKey
+                    : deepThinkingKey;
+                const deepModel = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
+                    ? model
+                    : deepThinkingModel;
+                const thinkStreamData = {
+                    model: deepModel,
+                    messages: [...messagesHistory],
+                    stream: true,
+                };
+                const thinkStreamOptions = {
+                    method: 'POST',
+                    url: `${deepUrl}/v1/chat/completions`,
+                    responseType: 'stream',
+                    timeout: timeout * 5,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${deepKey}`,
+                    },
+                    data: thinkStreamData,
+                };
+                const options = await this.sanitizeOptionsForLogging(thinkStreamOptions);
+                common_1.Logger.log(`思考流参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
+                const thinkResponse = await (0, axios_1.default)(thinkStreamOptions);
+                const thinkStream = thinkResponse.data;
+                let buffer = '';
+                let isUsingReasoningContent = false;
+                await new Promise((resolve, reject) => {
+                    thinkStream.on('data', (chunk) => {
+                        if (isThinkStreamResolved)
+                            return;
+                        buffer += chunk.toString();
+                        let lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        lines.forEach((line) => {
+                            var _a, _b;
+                            if (line.trim() === 'data: [DONE]') {
+                                isThinkStreamResolved = true;
+                                resolve(result);
+                                return;
+                            }
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const cleanedLine = line.slice(6).trim();
+                                    if (cleanedLine) {
+                                        const jsonLine = JSON.parse(cleanedLine);
+                                        const delta = (_b = (_a = jsonLine.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.delta;
+                                        let thinkFlowContent = '';
+                                        if ((delta === null || delta === void 0 ? void 0 : delta.reasoning_content) && !isUsingReasoningContent) {
+                                            isUsingReasoningContent = true;
+                                            thinkFlowContent = '<think>' + delta.reasoning_content;
+                                        }
+                                        else if (isUsingReasoningContent) {
+                                            if (delta.reasoning_content) {
+                                                thinkFlowContent = delta.reasoning_content;
+                                            }
+                                            else {
+                                                thinkFlowContent = '</think>';
+                                            }
+                                        }
+                                        else {
+                                            thinkFlowContent = (delta === null || delta === void 0 ? void 0 : delta.content) || '';
+                                        }
+                                        if (thinkFlowContent) {
+                                            result.text = thinkFlowContent;
+                                            result.answer += thinkFlowContent;
+                                            thinkContent = result.answer;
+                                            onProgress === null || onProgress === void 0 ? void 0 : onProgress({
+                                                text: result.text,
+                                                answer: result.answer,
+                                                canvasText: result.canvasText,
+                                                content: result.content,
+                                            });
+                                        }
+                                        if (result.answer.includes('</think>')) {
+                                            if (model.includes('deepseek-r1') ||
+                                                model.includes('deepseek-reasoner')) {
+                                                isUsingReasoningContent = false;
+                                            }
+                                            else {
+                                                isThinkStreamResolved = true;
+                                                resolve(result);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                                catch (error) {
+                                    common_1.Logger.error('解析思考流失败:', line, error);
+                                }
+                            }
+                        });
+                    });
+                    thinkStream.on('end', () => {
+                        if (!isThinkStreamResolved) {
+                            isThinkStreamResolved = true;
+                            console.log('思考流已完成:', result.answer);
+                            resolve(result);
+                        }
+                    });
+                    thinkStream.on('error', reject);
+                    abortController.signal.addEventListener('abort', () => {
+                        if (!isThinkStreamResolved) {
+                            isThinkStreamResolved = true;
+                            resolve(result);
+                        }
+                    });
+                });
+            }
+            if (model.includes('deepseek-r1') ||
+                model.includes('deepseek-reasoner')) {
+                result.text = '';
+                return result;
+            }
+            const secondStreamData = {
+                model,
+                messages: [...messagesHistory],
+                stream: true,
+                temperature,
+            };
+            const systemMessage = (_a = secondStreamData.messages) === null || _a === void 0 ? void 0 : _a.find((message) => message.role === 'system');
+            if (systemMessage) {
+                systemMessage.content += `\n以下是针对这个问题的思考推理思路，请参考回答：\n${thinkContent}`;
+            }
+            else {
+                secondStreamData.messages.unshift({
+                    role: 'system',
+                    content: `\n以下是针对这个问题的思考推理思路，请参考回答：\n${thinkContent}`,
+                });
+            }
+            const secondStreamOptions = {
+                method: 'POST',
+                url: `${proxyUrl}/v1/chat/completions`,
+                responseType: 'stream',
+                timeout,
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${apiKey}`,
+                },
+                data: secondStreamData,
+            };
+            const options = await this.sanitizeOptionsForLogging(secondStreamOptions);
+            common_1.Logger.log(`普通对话参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
+            const secondResponse = await (0, axios_1.default)(secondStreamOptions);
+            const secondStream = secondResponse.data;
             let buffer = '';
             await new Promise((resolve, reject) => {
-                stream.on('data', (chunk) => {
+                console.log('secondStream');
+                secondStream.on('data', (chunk) => {
                     buffer += chunk.toString();
                     let lines = buffer.split('\n');
-                    buffer = lines.pop();
+                    buffer = lines.pop() || '';
                     lines.forEach((line) => {
-                        var _a, _b;
+                        var _a, _b, _c;
                         if (line.trim() === 'data: [DONE]') {
-                            console.log('处理结束信号 [DONE]');
                             resolve(result);
                             return;
                         }
@@ -67,33 +265,33 @@ let OpenAIChatService = class OpenAIChatService {
                                 const cleanedLine = line.slice(6).trim();
                                 if (cleanedLine) {
                                     const jsonLine = JSON.parse(cleanedLine);
-                                    const content = ((_b = (_a = jsonLine.choices[0]) === null || _a === void 0 ? void 0 : _a.delta) === null || _b === void 0 ? void 0 : _b.content) || '';
+                                    const content = ((_c = (_b = (_a = jsonLine.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.delta) === null || _c === void 0 ? void 0 : _c.content) || '';
+                                    result.text = content;
                                     result.answer += content;
-                                    onProgress === null || onProgress === void 0 ? void 0 : onProgress({ text: content, answer: result.answer });
+                                    onProgress === null || onProgress === void 0 ? void 0 : onProgress({
+                                        text: result.text,
+                                        answer: result.answer,
+                                        canvasText: result.canvasText,
+                                        content: result.content,
+                                    });
                                 }
                             }
                             catch (error) {
-                                console.error('Error parsing line:', line, error);
+                                common_1.Logger.error('解析第二个流失败:', line, error);
                             }
                         }
                     });
                 });
-                stream.on('end', () => {
-                    resolve(result);
-                });
-                stream.on('error', (error) => {
-                    reject(error);
-                });
-                abortController.signal.addEventListener('abort', () => {
-                    resolve(result);
-                });
+                secondStream.on('end', () => resolve(result));
+                secondStream.on('error', reject);
+                abortController.signal.addEventListener('abort', () => resolve(result));
             });
             return result;
         }
         catch (error) {
             result.errMsg = (0, utils_1.handleError)(error);
             common_1.Logger.error(result.errMsg);
-            onFailure(result);
+            onFailure === null || onFailure === void 0 ? void 0 : onFailure(result);
             return result;
         }
     }
@@ -169,7 +367,7 @@ let OpenAIChatService = class OpenAIChatService {
             return response === null || response === void 0 ? void 0 : response.data.choices[0].message.content;
         }
         catch (error) {
-            console.log('error: ', error);
+            common_1.Logger.error('error: ', error);
         }
     }
 };

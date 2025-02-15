@@ -95,7 +95,7 @@ let ModelsService = class ModelsService {
     async getBaseConfig() {
         if (!this.modelTypes.length || !Object.keys(this.modelMaps).length)
             return;
-        const { keyType, modelName, model, deductType, deduct, isFileUpload, modelAvatar, modelDescription, } = this.modelMaps[1][0];
+        const { keyType, modelName, model, deductType, deduct, isFileUpload, modelAvatar, modelDescription, isNetworkSearch, isDeepThinking, deductDeepThink, } = this.modelMaps[1][0];
         return {
             modelInfo: {
                 keyType,
@@ -106,6 +106,9 @@ let ModelsService = class ModelsService {
                 isFileUpload,
                 modelAvatar,
                 modelDescription,
+                isNetworkSearch,
+                isDeepThinking,
+                deductDeepThink,
             },
         };
     }
@@ -195,7 +198,7 @@ let ModelsService = class ModelsService {
                 .sort((a, b) => a.modelOrder - b.modelOrder);
             cloneModelMaps[key] = Array.from(cloneModelMaps[key]
                 .map((t) => {
-                const { modelName, keyType, model, deduct, deductType, maxRounds, modelAvatar, isFileUpload, modelDescription, } = t;
+                const { modelName, keyType, model, deduct, deductType, maxRounds, modelAvatar, isFileUpload, modelDescription, isNetworkSearch, isDeepThinking, deductDeepThink, } = t;
                 return {
                     modelName,
                     keyType,
@@ -206,6 +209,9 @@ let ModelsService = class ModelsService {
                     modelAvatar,
                     isFileUpload,
                     modelDescription,
+                    isNetworkSearch,
+                    isDeepThinking,
+                    deductDeepThink,
                 };
             })
                 .reduce((map, obj) => map.set(obj.modelName, obj), new Map())

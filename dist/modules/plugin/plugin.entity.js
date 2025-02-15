@@ -31,10 +31,6 @@ __decorate([
     __metadata("design:type", Number)
 ], PluginEntity.prototype, "isEnabled", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ comment: '插件是否为系统插件 0：否 1：是', default: 0 }),
-    __metadata("design:type", Number)
-], PluginEntity.prototype, "isSystemPlugin", void 0);
-__decorate([
     (0, typeorm_1.Column)({ comment: '调用参数', type: 'text' }),
     __metadata("design:type", String)
 ], PluginEntity.prototype, "parameters", void 0);

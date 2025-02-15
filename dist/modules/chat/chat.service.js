@@ -80,11 +80,14 @@ let ChatService = class ChatService {
                 throw new common_1.HttpException('你当前使用的应用已被下架、请删除当前对话开启新的对话吧！', common_1.HttpStatus.BAD_REQUEST);
             }
         }
-        const { groupId, fileParsing } = options;
-        const { openaiTimeout, openaiBaseUrl, openaiBaseKey, systemPreMessage, isMjTranslate, mjTranslatePrompt, openaiTemperature, openaiBaseModel, isGeneratePromptReference, isConvertToBase64, isSensitiveWordFilter, } = await this.globalConfigService.getConfigs([
+        const { groupId, fileParsing, usingNetwork, usingDeepThinking } = options;
+        const { openaiTimeout, openaiBaseUrl, openaiBaseKey, deepThinkingUrl, deepThinkingKey, deepThinkingModel, systemPreMessage, isMjTranslate, mjTranslatePrompt, openaiTemperature, openaiBaseModel, isGeneratePromptReference, isConvertToBase64, isSensitiveWordFilter, } = await this.globalConfigService.getConfigs([
             'openaiTimeout',
             'openaiBaseUrl',
             'openaiBaseKey',
+            'deepThinkingUrl',
+            'deepThinkingKey',
+            'deepThinkingModel',
             'systemPreMessage',
             'isMjTranslate',
             'mjTranslatePrompt',
@@ -149,18 +152,23 @@ let ChatService = class ChatService {
             }
         }
         else {
-            const groupInfo = await this.chatGroupService.getGroupInfoFromId(groupId);
-            if (usingPlugin && usingPlugin.isSystemPlugin === 0) {
-                let pluginPrompt = '';
+            if (usingNetwork) {
+                let searchPrompt = '';
                 try {
-                    pluginPrompt = await this.usePlugin(prompt, usingPlugin.parameters);
-                    common_1.Logger.log(`插件返回结果: ${pluginPrompt}`, 'ChatService');
+                    searchPrompt = await this.usePlugin(prompt, 'net-search');
+                    common_1.Logger.log(`联网搜索返回结果: ${searchPrompt}`, 'ChatService');
                 }
                 catch (error) {
-                    pluginPrompt = prompt;
-                    common_1.Logger.error(`插件调用错误: ${error}`);
+                    searchPrompt = prompt;
+                    common_1.Logger.error(`联网搜索调用错误: ${error}`);
                 }
-                setSystemMessage = pluginPrompt;
+                setSystemMessage = searchPrompt;
+                currentRequestModelKey =
+                    await this.modelsService.getCurrentModelKeyInfo(model);
+            }
+            else if ((usingPlugin === null || usingPlugin === void 0 ? void 0 : usingPlugin.parameters) === 'mind-map') {
+                setSystemMessage =
+                    'Please provide a detailed outline in Markdown format: Use a multi-level structure with at least 3-4 levels. Include specific solutions or steps under each topic. Make it suitable for creating mind maps. Provide only the outline content without any irrelevant explanations. Start directly with the outline, no introduction needed. Use the language I asked in. Note: Use #, ##, ### etc. for different heading levels. Use - or * for list items. Use bold, italic etc. to emphasize key points. Use tables, code blocks etc. as needed. Please provide a clear, content-rich Markdown format outline based on these requirements.';
                 currentRequestModelKey =
                     await this.modelsService.getCurrentModelKeyInfo(model);
                 common_1.Logger.log(`使用插件预设: ${setSystemMessage}`, 'ChatService');
@@ -204,7 +212,7 @@ let ChatService = class ChatService {
                 fileUrl: '',
             }, req);
         }
-        const { deduct, isTokenBased, tokenFeeRatio, deductType, key, id: keyId, maxRounds, proxyUrl, maxModelTokens, timeout, model: useModel, isFileUpload, keyType: modelType, } = currentRequestModelKey;
+        const { deduct, isTokenBased, tokenFeeRatio, deductType, key, id: keyId, maxRounds, proxyUrl, maxModelTokens, timeout, model: useModel, isFileUpload, keyType: modelType, deductDeepThink = 1, } = currentRequestModelKey;
         if (await this.chatLogService.checkModelLimits(req.user, useModel)) {
             throw new common_1.HttpException('1 小时内对话次数过多，请切换模型或稍后再试！', common_1.HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -229,7 +237,7 @@ let ChatService = class ChatService {
             usePrompt =
                 isFileUpload === '1' && fileInfo ? fileInfo + ' ' + prompt : prompt;
         }
-        await this.userBalanceService.validateBalance(req, deductType, deduct);
+        await this.userBalanceService.validateBalance(req, deductType, deduct * (usingDeepThinking ? deductDeepThink : 1));
         const useModeName = modelName;
         const proxyResUrl = (0, utils_1.formatUrl)(proxyUrl || openaiBaseUrl || 'https://api.openai.com');
         const modelKey = key || openaiBaseKey;
@@ -316,7 +324,9 @@ let ChatService = class ChatService {
             model: useModel,
             isFileUpload,
         }, this.chatLogService);
-        let charge = action !== 'UPSCALE' && useModel === 'midjourney' ? deduct * 4 : deduct;
+        let charge = action !== 'UPSCALE' && useModel === 'midjourney'
+            ? deduct * 4
+            : deduct * (usingDeepThinking ? deductDeepThink : 1);
         const abortController = new AbortController();
         try {
             if (res) {
@@ -586,6 +596,10 @@ let ChatService = class ChatService {
                             timeout: modelTimeout,
                             proxyUrl: proxyResUrl,
                             modelAvatar: modelAvatar,
+                            usingDeepThinking: usingDeepThinking,
+                            deepThinkingKey: deepThinkingKey,
+                            deepThinkingUrl: deepThinkingUrl,
+                            deepThinkingModel: deepThinkingModel,
                             onProgress: (chat) => {
                                 res.write(firstChunk
                                     ? JSON.stringify(chat)
@@ -645,7 +659,8 @@ let ChatService = class ChatService {
                         if (isTokenBased === true) {
                             charge =
                                 deduct *
-                                    Math.ceil((promptTokens + completionTokens) / tokenFeeRatio);
+                                    Math.ceil((promptTokens + completionTokens) / tokenFeeRatio) *
+                                    (usingDeepThinking ? deductDeepThink : 1);
                         }
                         await this.userBalanceService.deductFromBalance(req.user.id, deductType, charge, promptTokens + completionTokens);
                         await this.modelsService.saveUseLog(keyId, promptTokens + completionTokens);
@@ -662,25 +677,6 @@ let ChatService = class ChatService {
                     });
                     response = { error: '处理请求时发生错误' };
                 }
-            }
-            else {
-                response = await this.openAIChatService.openAIChat(messagesHistory, {
-                    chatId: assistantLogId,
-                    maxModelTokens,
-                    apiKey: modelKey,
-                    model: useModel,
-                    modelName: useModeName,
-                    modelType,
-                    temperature,
-                    prompt,
-                    fileInfo,
-                    isFileUpload,
-                    timeout: modelTimeout,
-                    proxyUrl: proxyResUrl,
-                    abortController,
-                });
-                await this.userBalanceService.deductFromBalance(req.user.id, deductType, charge);
-                return response.answer;
             }
         }
         catch (error) {

@@ -31,17 +31,12 @@ let PluginService = class PluginService {
             take: size,
         });
         const processedRows = await Promise.all(rows.map(async (plugin) => {
-            if (plugin.isSystemPlugin === 1) {
-                try {
-                    const parameters = await this.modelsService.getCurrentModelKeyInfo(plugin.parameters);
-                    const deductType = parameters.deductType;
-                    return Object.assign(Object.assign({}, plugin), { deductType });
-                }
-                catch (error) {
-                    return Object.assign(Object.assign({}, plugin), { deductType: 0 });
-                }
+            try {
+                const parameters = await this.modelsService.getCurrentModelKeyInfo(plugin.parameters);
+                const deductType = parameters.deductType;
+                return Object.assign(Object.assign({}, plugin), { deductType });
             }
-            else {
+            catch (error) {
                 return Object.assign(Object.assign({}, plugin), { deductType: 0 });
             }
         }));
@@ -49,7 +44,7 @@ let PluginService = class PluginService {
         return { rows: filteredRows, count: filteredRows.length };
     }
     async createPlugin(body) {
-        const { name, pluginImg, description, isEnabled, isSystemPlugin, parameters, sortOrder, } = body;
+        const { name, pluginImg, description, isEnabled, parameters, sortOrder } = body;
         const existingPlugin = await this.PluginEntity.findOne({
             where: { name },
         });
@@ -61,14 +56,13 @@ let PluginService = class PluginService {
             pluginImg,
             description,
             isEnabled: isEnabled !== undefined ? isEnabled : 1,
-            isSystemPlugin: isSystemPlugin !== undefined ? isSystemPlugin : 0,
             parameters,
             sortOrder: sortOrder !== undefined ? sortOrder : 0,
         });
         return await this.PluginEntity.save(newPlugin);
     }
     async updatePlugin(body) {
-        const { id, name, pluginImg, description, isEnabled, isSystemPlugin, parameters, sortOrder, } = body;
+        const { id, name, pluginImg, description, isEnabled, parameters, sortOrder, } = body;
         const existingPlugin = await this.PluginEntity.findOne({
             where: { id },
         });
@@ -86,10 +80,6 @@ let PluginService = class PluginService {
         existingPlugin.description = description;
         existingPlugin.isEnabled =
             isEnabled !== undefined ? isEnabled : existingPlugin.isEnabled;
-        existingPlugin.isSystemPlugin =
-            isSystemPlugin !== undefined
-                ? isSystemPlugin
-                : existingPlugin.isSystemPlugin;
         existingPlugin.parameters = parameters;
         existingPlugin.sortOrder =
             sortOrder !== undefined ? sortOrder : existingPlugin.sortOrder;

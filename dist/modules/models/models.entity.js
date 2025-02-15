@@ -55,6 +55,10 @@ __decorate([
     __metadata("design:type", Number)
 ], ModelsEntity.prototype, "deduct", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ comment: '模型开启深度思考后积分扣除的系数', default: 1 }),
+    __metadata("design:type", Number)
+], ModelsEntity.prototype, "deductDeepThink", void 0);
+__decorate([
     (0, typeorm_1.Column)({ comment: '模型扣除余额类型 1: 普通模型 2: 高级模型', default: 1 }),
     __metadata("design:type", Number)
 ], ModelsEntity.prototype, "deductType", void 0);
@@ -112,6 +116,14 @@ __decorate([
     (0, typeorm_1.Column)({ comment: '模型介绍', nullable: true }),
     __metadata("design:type", String)
 ], ModelsEntity.prototype, "modelDescription", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ comment: '开启联网搜索', nullable: true }),
+    __metadata("design:type", Boolean)
+], ModelsEntity.prototype, "isNetworkSearch", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ comment: '开启深度思考', nullable: true }),
+    __metadata("design:type", Boolean)
+], ModelsEntity.prototype, "isDeepThinking", void 0);
 ModelsEntity = __decorate([
     (0, typeorm_1.Entity)({ name: 'models' })
 ], ModelsEntity);
