@@ -1,5 +1,5 @@
 # 编译阶段
-FROM node:20.14.0-alpine AS build
+FROM node:20.17.0-alpine AS build
 
 WORKDIR /app
 
@@ -14,14 +14,14 @@ RUN apk update && apk upgrade && \
     npm config set registry https://registry.npmmirror.com && \
     apk add --no-cache --virtual .build-deps git && \
     npm install -g npm@10.7.0 && \
-  npm install -g npm@latest && \
-  npm install --production --no-optional --legacy-peer-deps && \
-  npm cache clean --force && \
-  apk del .build-deps && \
-  rm -rf /var/cache/apk/* /tmp/*
+    npm install --production --no-optional --legacy-peer-deps && \
+    npm cache clean --force && \
+    apk del .build-deps && \
+    rm -rf /var/cache/apk/* /tmp/*
+
 
 # 运行阶段
-FROM node:20.14.0-alpine AS runner
+FROM node:20.17.0-alpine AS runner
 
 ENV TZ="Asia/Shanghai" \
   NODE_ENV=production
