@@ -29,7 +29,7 @@ let UploadService = class UploadService {
     onModuleInit() { }
     async uploadFile(file, dir = 'others') {
         const { buffer, mimetype } = file;
-        if (process.env.ISDEV === 'TRUE') {
+        if (process.env.ISDEV === 'true') {
             dir = `dev/${dir}`;
         }
         const fileExtension = mime.extension(mimetype) || '';
@@ -117,7 +117,7 @@ let UploadService = class UploadService {
         }
     }
     async uploadFileFromUrl({ url, dir = 'others' }) {
-        if (process.env.ISDEV === 'TRUE') {
+        if (process.env.ISDEV === 'true') {
             dir = `dev/${dir}`;
         }
         const { buffer, mimeType } = await this.getBufferFromUrl(url);

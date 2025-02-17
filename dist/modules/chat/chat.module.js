@@ -38,6 +38,7 @@ const verification_service_1 = require("../verification/verification.service");
 const verifycation_entity_1 = require("../verification/verifycation.entity");
 const chat_controller_1 = require("./chat.controller");
 const chat_service_1 = require("./chat.service");
+const bigModel_service_1 = require("../ai/bigModel.service");
 let ChatModule = class ChatModule {
 };
 ChatModule = __decorate([
@@ -78,6 +79,7 @@ ChatModule = __decorate([
             cogVideo_service_1.CogVideoService,
             fluxDraw_service_1.FluxDrawService,
             aiPPT_1.AiPptService,
+            bigModel_service_1.BigModelService,
         ],
         exports: [chat_service_1.ChatService],
     })

@@ -19,8 +19,9 @@ let OpenAIChatService = class OpenAIChatService {
         this.globalConfigService = globalConfigService;
     }
     async openAIChat(messagesHistory, inputs, agentMessages) {
-        var _a;
-        const { onFailure, onProgress, apiKey, model, proxyUrl, modelName, timeout, chatId, isFileUpload, modelAvatar, temperature, abortController, prompt, usingDeepThinking, deepThinkingModel, deepThinkingUrl, deepThinkingKey, } = inputs;
+        var _a, _b;
+        const { onFailure, onProgress, apiKey, model, proxyUrl, modelName, timeout, chatId, isFileUpload, modelAvatar, temperature, abortController, prompt, usingDeepThinking, deepThinkingModel, deepThinkingUrl, deepThinkingKey, sanitizedSearchResult, fileInfo, } = inputs;
+        const originalMessagesHistory = JSON.parse(JSON.stringify(messagesHistory));
         let result = {
             text: '',
             answer: '',
@@ -31,90 +32,29 @@ let OpenAIChatService = class OpenAIChatService {
             chatId: chatId,
             errMsg: '',
             modelAvatar: modelAvatar,
+            networkSearchResult: '',
         };
+        result.networkSearchResult = sanitizedSearchResult;
         try {
-            if (agentMessages && agentMessages.length > 0) {
-                const firstStreamData = {
-                    model,
-                    messages: agentMessages,
-                    stream: true,
-                    temperature,
-                };
-                const firstStreamOptions = {
-                    method: 'POST',
-                    url: `${proxyUrl}/v1/chat/completions`,
-                    responseType: 'stream',
-                    timeout,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${apiKey}`,
-                    },
-                    data: firstStreamData,
-                };
-                common_1.Logger.log('First Stream Request:', JSON.stringify(firstStreamOptions, null, 2));
-                const firstResponse = await (0, axios_1.default)(firstStreamOptions);
-                const firstStream = firstResponse.data;
-                let buffer = '';
-                await new Promise((resolve, reject) => {
-                    firstStream.on('data', (chunk) => {
-                        buffer += chunk.toString();
-                        let lines = buffer.split('\n');
-                        buffer = lines.pop() || '';
-                        lines.forEach((line) => {
-                            var _a, _b, _c;
-                            if (line.trim() === 'data: [DONE]') {
-                                resolve(result);
-                                return;
-                            }
-                            if (line.startsWith('data: ')) {
-                                try {
-                                    const cleanedLine = line.slice(6).trim();
-                                    if (cleanedLine) {
-                                        const jsonLine = JSON.parse(cleanedLine);
-                                        const content = ((_c = (_b = (_a = jsonLine.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.delta) === null || _c === void 0 ? void 0 : _c.content) || '';
-                                        result.canvasText = content;
-                                        result.canvasContent += content;
-                                        onProgress === null || onProgress === void 0 ? void 0 : onProgress({
-                                            text: result.text,
-                                            answer: result.answer,
-                                            canvasText: result.canvasText,
-                                            content: result.content,
-                                        });
-                                    }
-                                }
-                                catch (error) {
-                                    common_1.Logger.error('解析第一个流失败:', line, error);
-                                }
-                            }
-                        });
-                    });
-                    firstStream.on('end', () => resolve(result));
-                    firstStream.on('error', reject);
-                    abortController.signal.addEventListener('abort', () => resolve(result));
-                });
-            }
+            const isDeepSeekModel = model.includes('deepseek-r1') || model.includes('deepseek-reasoner');
             let thinkContent = '';
-            let isThinkStreamResolved = false;
-            if (usingDeepThinking ||
-                model.includes('deepseek-r1') ||
-                model.includes('deepseek-reasoner')) {
-                const deepUrl = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
-                    ? proxyUrl
-                    : deepThinkingUrl;
-                const deepKey = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
-                    ? apiKey
-                    : deepThinkingKey;
-                const deepModel = model.includes('deepseek-r1') || model.includes('deepseek-reasoner')
-                    ? model
-                    : deepThinkingModel;
+            if (usingDeepThinking || isDeepSeekModel) {
+                const deepUrl = isDeepSeekModel ? proxyUrl : deepThinkingUrl;
+                const deepKey = isDeepSeekModel ? apiKey : deepThinkingKey;
+                const deepModel = isDeepSeekModel ? model : deepThinkingModel;
+                let isThinkStreamResolved = false;
+                const processedMessagesHistory = await this.processMessagesHistory(messagesHistory);
                 const thinkStreamData = {
                     model: deepModel,
-                    messages: [...messagesHistory],
+                    messages: processedMessagesHistory,
                     stream: true,
                 };
+                let finalUrl = deepUrl.includes('https://api.deepseek.com')
+                    ? `${deepUrl}/chat/completions`
+                    : `${deepUrl}/v1/chat/completions`;
                 const thinkStreamOptions = {
                     method: 'POST',
-                    url: `${deepUrl}/v1/chat/completions`,
+                    url: finalUrl,
                     responseType: 'stream',
                     timeout: timeout * 5,
                     headers: {
@@ -124,11 +64,18 @@ let OpenAIChatService = class OpenAIChatService {
                     data: thinkStreamData,
                 };
                 const options = await this.sanitizeOptionsForLogging(thinkStreamOptions);
-                common_1.Logger.log(`思考流参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
+                common_1.Logger.debug(`思考流参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
                 const thinkResponse = await (0, axios_1.default)(thinkStreamOptions);
                 const thinkStream = thinkResponse.data;
                 let buffer = '';
                 let isUsingReasoningContent = false;
+                const resolveStream = (resolve) => {
+                    if (!isThinkStreamResolved) {
+                        common_1.Logger.log('思考流已完成', 'AIChat');
+                        isThinkStreamResolved = true;
+                        resolve(result);
+                    }
+                };
                 await new Promise((resolve, reject) => {
                     thinkStream.on('data', (chunk) => {
                         if (isThinkStreamResolved)
@@ -139,8 +86,7 @@ let OpenAIChatService = class OpenAIChatService {
                         lines.forEach((line) => {
                             var _a, _b;
                             if (line.trim() === 'data: [DONE]') {
-                                isThinkStreamResolved = true;
-                                resolve(result);
+                                resolveStream(resolve);
                                 return;
                             }
                             if (line.startsWith('data: ')) {
@@ -170,6 +116,7 @@ let OpenAIChatService = class OpenAIChatService {
                                             result.answer += thinkFlowContent;
                                             thinkContent = result.answer;
                                             onProgress === null || onProgress === void 0 ? void 0 : onProgress({
+                                                networkSearchResult: sanitizedSearchResult,
                                                 text: result.text,
                                                 answer: result.answer,
                                                 canvasText: result.canvasText,
@@ -177,13 +124,11 @@ let OpenAIChatService = class OpenAIChatService {
                                             });
                                         }
                                         if (result.answer.includes('</think>')) {
-                                            if (model.includes('deepseek-r1') ||
-                                                model.includes('deepseek-reasoner')) {
+                                            if (isDeepSeekModel) {
                                                 isUsingReasoningContent = false;
                                             }
                                             else {
-                                                isThinkStreamResolved = true;
-                                                resolve(result);
+                                                resolveStream(resolve);
                                                 return;
                                             }
                                         }
@@ -198,33 +143,34 @@ let OpenAIChatService = class OpenAIChatService {
                     thinkStream.on('end', () => {
                         if (!isThinkStreamResolved) {
                             isThinkStreamResolved = true;
-                            console.log('思考流已完成:', result.answer);
                             resolve(result);
                         }
                     });
                     thinkStream.on('error', reject);
                     abortController.signal.addEventListener('abort', () => {
-                        if (!isThinkStreamResolved) {
-                            isThinkStreamResolved = true;
-                            resolve(result);
-                        }
+                        resolveStream(resolve);
                     });
                 });
             }
-            if (model.includes('deepseek-r1') ||
-                model.includes('deepseek-reasoner')) {
+            if (isDeepSeekModel) {
                 result.text = '';
                 return result;
             }
+            common_1.Logger.debug('原始 messagesHistory:', JSON.stringify(originalMessagesHistory, null, 2));
             const secondStreamData = {
                 model,
-                messages: [...messagesHistory],
+                messages: originalMessagesHistory,
                 stream: true,
                 temperature,
             };
             const systemMessage = (_a = secondStreamData.messages) === null || _a === void 0 ? void 0 : _a.find((message) => message.role === 'system');
             if (systemMessage) {
-                systemMessage.content += `\n以下是针对这个问题的思考推理思路，请参考回答：\n${thinkContent}`;
+                const imageUrlMessages = ((_b = secondStreamData.messages) === null || _b === void 0 ? void 0 : _b.filter((message) => message.type === 'image_url')) || [];
+                let updatedContent = `\n以下是针对这个问题的思考推理思路，请参考回答：\n${thinkContent}`;
+                imageUrlMessages.forEach((imageMessage) => {
+                    updatedContent = `${updatedContent}\n${JSON.stringify(imageMessage)}`;
+                });
+                systemMessage.content += updatedContent;
             }
             else {
                 secondStreamData.messages.unshift({
@@ -244,12 +190,11 @@ let OpenAIChatService = class OpenAIChatService {
                 data: secondStreamData,
             };
             const options = await this.sanitizeOptionsForLogging(secondStreamOptions);
-            common_1.Logger.log(`普通对话参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
+            common_1.Logger.debug(`普通对话参数：${JSON.stringify(options, null, 2)}`, 'AIChat');
             const secondResponse = await (0, axios_1.default)(secondStreamOptions);
             const secondStream = secondResponse.data;
             let buffer = '';
             await new Promise((resolve, reject) => {
-                console.log('secondStream');
                 secondStream.on('data', (chunk) => {
                     buffer += chunk.toString();
                     let lines = buffer.split('\n');
@@ -269,6 +214,7 @@ let OpenAIChatService = class OpenAIChatService {
                                     result.text = content;
                                     result.answer += content;
                                     onProgress === null || onProgress === void 0 ? void 0 : onProgress({
+                                        networkSearchResult: sanitizedSearchResult,
                                         text: result.text,
                                         answer: result.answer,
                                         canvasText: result.canvasText,
@@ -277,7 +223,7 @@ let OpenAIChatService = class OpenAIChatService {
                                 }
                             }
                             catch (error) {
-                                common_1.Logger.error('解析第二个流失败:', line, error);
+                                common_1.Logger.error('解析回答失败:', line, error);
                             }
                         }
                     });
@@ -325,7 +271,40 @@ let OpenAIChatService = class OpenAIChatService {
         }
         return sanitizedOptions;
     }
-    async chatFree(prompt, systemMessage, messagesHistory) {
+    async processMessagesHistory(messagesHistory) {
+        const processedMessages = await Promise.all(messagesHistory.map(async (message, index, array) => {
+            if (message.role === 'user' && Array.isArray(message.content)) {
+                if (index === array.length - 1) {
+                    for (const item of message.content) {
+                        if (item.type === 'image_url') {
+                            const imageDescription = await this.chatFree('', '详细描述下图片中的内容', null, item.image_url.url);
+                            const systemMessageIndex = array.findIndex((msg) => msg.role === 'system');
+                            if (systemMessageIndex !== -1) {
+                                array[systemMessageIndex].content += `\n\n图片描述: ${imageDescription}`;
+                            }
+                            else {
+                                array.unshift({
+                                    role: 'system',
+                                    content: `图片描述: ${imageDescription}`,
+                                });
+                            }
+                            message.content = `图片内容是：${imageDescription}`;
+                            break;
+                        }
+                    }
+                }
+                else {
+                    message.content = message.content
+                        .filter((item) => item.type !== 'image_url')
+                        .map((item) => item.text || item)
+                        .join('');
+                }
+            }
+            return message;
+        }));
+        return processedMessages.filter((message) => message !== null);
+    }
+    async chatFree(prompt, systemMessage, messagesHistory, fileInfo) {
         const { openaiBaseUrl = '', openaiBaseKey = '', openaiBaseModel, } = await this.globalConfigService.getConfigs([
             'openaiBaseKey',
             'openaiBaseUrl',
@@ -344,10 +323,29 @@ let OpenAIChatService = class OpenAIChatService {
             requestData = requestData.concat(messagesHistory);
         }
         else {
-            requestData.push({
-                role: 'user',
-                content: prompt,
-            });
+            if (fileInfo) {
+                requestData.push({
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'text',
+                            text: prompt,
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: fileInfo,
+                            },
+                        },
+                    ],
+                });
+            }
+            else {
+                requestData.push({
+                    role: 'user',
+                    content: prompt,
+                });
+            }
         }
         const options = {
             method: 'POST',
@@ -357,13 +355,13 @@ let OpenAIChatService = class OpenAIChatService {
                 Authorization: `Bearer ${key}`,
             },
             data: {
-                model: openaiBaseModel || 'gpt-3.5-turbo-0125',
+                model: openaiBaseModel || 'gpt-4o-mini',
                 messages: requestData,
             },
         };
         try {
             const response = await (0, axios_1.default)(options);
-            common_1.Logger.log(`全局模型调用成功, 返回结果: ${response === null || response === void 0 ? void 0 : response.data.choices[0].message.content}`, 'ChatService');
+            common_1.Logger.debug(`全局模型调用成功, 返回结果: ${response === null || response === void 0 ? void 0 : response.data.choices[0].message.content}`, 'ChatService');
             return response === null || response === void 0 ? void 0 : response.data.choices[0].message.content;
         }
         catch (error) {

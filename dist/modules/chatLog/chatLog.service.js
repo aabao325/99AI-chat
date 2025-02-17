@@ -236,7 +236,7 @@ let ChatLogService = class ChatLogService {
         }
         const list = await this.chatLogEntity.find({ where });
         return list.map((item) => {
-            const { prompt, role, answer, canvasContent, createdAt, model, modelName, type, status, action, drawId, id, fileInfo, ttsUrl, videoUrl, audioUrl, customId, pluginParam, modelAvatar, taskData, promptReference, } = item;
+            const { prompt, role, answer, canvasContent, createdAt, model, modelName, type, status, action, drawId, id, fileInfo, ttsUrl, videoUrl, audioUrl, customId, pluginParam, modelAvatar, taskData, promptReference, networkSearchResult, } = item;
             return {
                 chatId: id,
                 dateTime: (0, utils_1.formatDate)(createdAt),
@@ -259,6 +259,7 @@ let ChatLogService = class ChatLogService {
                 modelAvatar: modelAvatar,
                 taskData: taskData,
                 promptReference: promptReference,
+                networkSearchResult: networkSearchResult,
             };
         });
     }

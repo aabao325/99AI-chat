@@ -142,6 +142,10 @@ __decorate([
     (0, typeorm_1.Column)({ comment: '提问参考', nullable: true }),
     __metadata("design:type", String)
 ], ChatLogEntity.prototype, "promptReference", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ comment: '联网搜索结果', nullable: true, type: 'text' }),
+    __metadata("design:type", String)
+], ChatLogEntity.prototype, "networkSearchResult", void 0);
 ChatLogEntity = __decorate([
     (0, typeorm_1.Entity)({ name: 'chatlog' })
 ], ChatLogEntity);

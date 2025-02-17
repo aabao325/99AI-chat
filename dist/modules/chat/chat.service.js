@@ -11,6 +11,17 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatService = void 0;
 const utils_1 = require("../../common/utils");
@@ -19,6 +30,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const axios_1 = require("axios");
 const typeorm_2 = require("typeorm");
 const aiPPT_1 = require("../ai/aiPPT");
+const bigModel_service_1 = require("../ai/bigModel.service");
 const cogVideo_service_1 = require("../ai/cogVideo.service");
 const fluxDraw_service_1 = require("../ai/fluxDraw.service");
 const lumaVideo_service_1 = require("../ai/lumaVideo.service");
@@ -40,12 +52,13 @@ const upload_service_1 = require("../upload/upload.service");
 const user_service_1 = require("../user/user.service");
 const userBalance_service_1 = require("../userBalance/userBalance.service");
 let ChatService = class ChatService {
-    constructor(configEntity, appEntity, pluginEntity, sunoService, openAIChatService, chatLogService, midjourneyService, stableDiffusionService, userBalanceService, userService, uploadService, badWordsService, autoreplyService, globalConfigService, chatGroupService, modelsService, openAIDrawService, lumaVideoService, cogVideoService, fluxDrawService, aiPptService) {
+    constructor(configEntity, appEntity, pluginEntity, sunoService, openAIChatService, bigModelService, chatLogService, midjourneyService, stableDiffusionService, userBalanceService, userService, uploadService, badWordsService, autoreplyService, globalConfigService, chatGroupService, modelsService, openAIDrawService, lumaVideoService, cogVideoService, fluxDrawService, aiPptService) {
         this.configEntity = configEntity;
         this.appEntity = appEntity;
         this.pluginEntity = pluginEntity;
         this.sunoService = sunoService;
         this.openAIChatService = openAIChatService;
+        this.bigModelService = bigModelService;
         this.chatLogService = chatLogService;
         this.midjourneyService = midjourneyService;
         this.stableDiffusionService = stableDiffusionService;
@@ -62,6 +75,17 @@ let ChatService = class ChatService {
         this.cogVideoService = cogVideoService;
         this.fluxDrawService = fluxDrawService;
         this.aiPptService = aiPptService;
+        this.removeThinkTags = (content) => {
+            if (Array.isArray(content)) {
+                return content.map((item) => {
+                    if (item.type === 'text') {
+                        item.text = item.text.replace(/<think>[\s\S]*?<\/think>/g, '');
+                    }
+                    return item;
+                });
+            }
+            return content.replace(/<think>[\s\S]*?<\/think>/g, '');
+        };
     }
     async chatProcess(body, req, res) {
         await this.userBalanceService.checkUserCertification(req.user.id);
@@ -112,11 +136,11 @@ let ChatService = class ChatService {
         let appName = '';
         let setSystemMessage = '';
         res && res.status(200);
-        let response = null;
         const curIp = (0, utils_1.getClientIp)(req);
         let usePrompt;
         let useModelAvatar = '';
         let usingPlugin;
+        let searchResult;
         if (usingPluginId) {
             usingPlugin = await this.pluginEntity.findOne({
                 where: { id: usingPluginId },
@@ -153,16 +177,43 @@ let ChatService = class ChatService {
         }
         else {
             if (usingNetwork) {
-                let searchPrompt = '';
                 try {
-                    searchPrompt = await this.usePlugin(prompt, 'net-search');
-                    common_1.Logger.log(`联网搜索返回结果: ${searchPrompt}`, 'ChatService');
+                    searchResult = await this.bigModelService.webSearchPro(prompt);
                 }
                 catch (error) {
-                    searchPrompt = prompt;
-                    common_1.Logger.error(`联网搜索调用错误: ${error}`);
+                    common_1.Logger.error('网络请求失败', error);
+                    searchResult = null;
                 }
-                setSystemMessage = searchPrompt;
+                const now = new Date();
+                const options = {
+                    timeZone: 'Asia/Shanghai',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                };
+                const currentDate = new Intl.DateTimeFormat('zh-CN', options).format(now);
+                let searchPrompt = '';
+                if (searchResult) {
+                    searchPrompt = JSON.stringify(searchResult, null, 2);
+                }
+                setSystemMessage = `
+          你的任务是根据用户的问题，通过下面的搜索结果提供更精确、详细、具体的回答。
+          请在适当的情况下在对应部分句子末尾标注引用的链接，使用[[序号](链接地址)]格式，同时使用多个链接可连续使用比如[[2](链接地址)][[5](链接地址)]，以下是搜索结果：
+            ${searchPrompt}
+            在回答时，请注意以下几点：
+              - 现在时间是: ${currentDate}。
+              - 并非搜索结果的所有内容都与用户的问题密切相关，你需要结合问题，对搜索结果进行甄别、筛选。
+              - 对于列举类的问题（如列举所有航班信息），尽量将答案控制在10个要点以内，并告诉用户可以查看搜索来源、获得完整信息。优先提供信息完整、最相关的列举项；如非必要，不要主动告诉用户搜索结果未提供的内容。
+              - 对于创作类的问题（如写论文），请务必在正文的段落中引用对应的参考编号。你需要解读并概括用户的题目要求，选择合适的格式，充分利用搜索结果并抽取重要信息，生成符合用户要求、极具思想深度、富有创造力与专业性的答案。你的创作篇幅需要尽可能延长，对于每一个要点的论述要推测用户的意图，给出尽可能多角度的回答要点，且务必信息量大、论述详尽。
+              - 如果回答很长，请尽量结构化、分段落总结。如果需要分点作答，尽量控制在5个点以内，并合并相关的内容。
+              - 对于客观类的问答，如果问题的答案非常简短，可以适当补充一到两句相关信息，以丰富内容。
+              - 你需要根据用户要求和回答内容选择合适、美观的回答格式，确保可读性强。
+              - 你的回答应该综合多个相关网页来回答，不能只重复引用一个网页。
+              - 除非用户要求，否则你回答的语言需要和用户提问的语言保持一致。
+            `;
                 currentRequestModelKey =
                     await this.modelsService.getCurrentModelKeyInfo(model);
             }
@@ -180,8 +231,18 @@ let ChatService = class ChatService {
                 common_1.Logger.log(`使用文件解析: ${setSystemMessage}`, 'ChatService');
             }
             else {
-                const currentDate = new Date().toISOString().split('T')[0];
-                setSystemMessage = systemPreMessage + `\n Current date: ${currentDate}`;
+                const now = new Date();
+                const options = {
+                    timeZone: 'Asia/Shanghai',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                };
+                const currentDate = new Intl.DateTimeFormat('zh-CN', options).format(now);
+                setSystemMessage = systemPreMessage + `\n 现在时间是: ${currentDate}`;
                 currentRequestModelKey =
                     await this.modelsService.getCurrentModelKeyInfo(model);
                 common_1.Logger.log(`使用全局预设: ${setSystemMessage}`, 'ChatService');
@@ -582,6 +643,17 @@ let ChatService = class ChatService {
                         return res.write(`\n${JSON.stringify(response)}`);
                     }
                     else {
+                        let sanitizedSearchResult;
+                        if (usingNetwork && searchResult) {
+                            sanitizedSearchResult = searchResult.searchResults.map((item) => {
+                                const { content } = item, rest = __rest(item, ["content"]);
+                                return rest;
+                            });
+                            common_1.Logger.debug('保存networkSearchResult');
+                            await this.chatLogService.updateChatLog(assistantLogId, {
+                                networkSearchResult: JSON.stringify({ searchResults: sanitizedSearchResult }, null, 2),
+                            });
+                        }
                         response = await this.openAIChatService.openAIChat(messagesHistory, {
                             chatId: assistantLogId,
                             maxModelTokens,
@@ -600,6 +672,9 @@ let ChatService = class ChatService {
                             deepThinkingKey: deepThinkingKey,
                             deepThinkingUrl: deepThinkingUrl,
                             deepThinkingModel: deepThinkingModel,
+                            sanitizedSearchResult: sanitizedSearchResult
+                                ? JSON.stringify({ searchResults: sanitizedSearchResult }, null, 2)
+                                : null,
                             onProgress: (chat) => {
                                 res.write(firstChunk
                                     ? JSON.stringify(chat)
@@ -724,7 +799,7 @@ let ChatService = class ChatService {
             let chatTitle;
             if (modelType === 1) {
                 try {
-                    chatTitle = await this.openAIChatService.chatFree(`根据用户提问{${prompt}}，给这个对话取一个名字，不超过10个字`);
+                    chatTitle = await this.openAIChatService.chatFree(`根据用户提问{${prompt}}，给这个对话取一个名字，不超过10个字，只需要返回标题，不需要其他任何内容。`);
                     if (chatTitle.length > 15) {
                         chatTitle = chatTitle.slice(0, 15);
                     }
@@ -785,6 +860,9 @@ let ChatService = class ChatService {
                     }
                     else {
                         content = record.text;
+                    }
+                    if (record.role === 'assistant') {
+                        content = this.removeThinkTags(content);
                     }
                     if (record.role === 'user') {
                         tempUserMessage = { role: record.role, content };
@@ -944,6 +1022,7 @@ ChatService = __decorate([
         typeorm_2.Repository,
         suno_service_1.SunoService,
         openaiChat_service_1.OpenAIChatService,
+        bigModel_service_1.BigModelService,
         chatLog_service_1.ChatLogService,
         midjourneyDraw_service_1.MidjourneyService,
         stableDiffusion_service_1.StableDiffusionService,

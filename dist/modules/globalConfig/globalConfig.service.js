@@ -97,7 +97,7 @@ let GlobalConfigService = class GlobalConfigService {
         common_1.Logger.log(`wechat refresh access_token  ==> ${this.wechatAccessToken}`, 'OfficialService');
     }
     async fetchBaseAccessToken(appId, secret, isInit = false) {
-        if (process.env.ISDEV === 'TRUE') {
+        if (process.env.ISDEV === 'true') {
             this.wechatAccessToken = '';
             return;
         }
@@ -105,10 +105,7 @@ let GlobalConfigService = class GlobalConfigService {
         const { data: { errmsg, access_token }, } = await axios_1.default.get(`${Url}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${secret}`);
         if (errmsg) {
             if (isInit) {
-                common_1.Logger.error(`获取微信access_token失败、错误信息：${errmsg}`, 'OfficialService');
-            }
-            else {
-                throw new common_1.HttpException('请配置正确的秘钥、当前秘钥检测不通过！', common_1.HttpStatus.BAD_REQUEST);
+                common_1.Logger.debug(`获取微信access_token失败、错误信息：${errmsg}`, 'OfficialService');
             }
             return '';
         }
@@ -116,7 +113,7 @@ let GlobalConfigService = class GlobalConfigService {
     }
     async fetchJsapiTicket(accessToken) {
         var _a;
-        if (process.env.ISDEV === 'TRUE') {
+        if (process.env.ISDEV === 'true') {
             this.wechatJsapiTicket = '';
             return;
         }
@@ -180,6 +177,7 @@ let GlobalConfigService = class GlobalConfigService {
             'mjHideWorkIn',
             'isVerifyEmail',
             'showWatermark',
+            'showCrami',
             'isHideTts',
             'isHideDefaultPreset',
             'isHideModel3Point',

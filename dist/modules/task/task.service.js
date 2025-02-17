@@ -38,7 +38,13 @@ let TaskService = class TaskService {
             return;
         expireUsers.forEach((user) => {
             this.userBalanceEntity
-                .update({ id: user.id }, { expirationTime: null, packageId: 0, memberModel3Count: 0, memberModel4Count: 0, memberDrawMjCount: 0 })
+                .update({ id: user.id }, {
+                expirationTime: null,
+                packageId: 0,
+                memberModel3Count: 0,
+                memberModel4Count: 0,
+                memberDrawMjCount: 0,
+            })
                 .then((res) => {
                 common_1.Logger.debug(`${user.id}会员已到期、清空所有余额并移除会员身份！`, 'TaskService');
             });

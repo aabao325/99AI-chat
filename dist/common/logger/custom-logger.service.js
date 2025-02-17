@@ -14,7 +14,7 @@ const common_1 = require("@nestjs/common");
 let CustomLoggerService = class CustomLoggerService extends common_1.ConsoleLogger {
     constructor() {
         super();
-        this.isDev = process.env.ISDEV === 'TRUE';
+        this.isDev = process.env.ISDEV === 'true';
     }
     log(message, context) {
         super.log(message, context);

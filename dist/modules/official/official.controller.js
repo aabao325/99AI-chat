@@ -82,7 +82,7 @@ let OfficialController = class OfficialController {
         return this.officialService.getQRSceneStrByBind(req);
     }
     async getQRCode(query) {
-        if (process.env.ISDEV === 'TRUE')
+        if (process.env.ISDEV === 'true')
             return '';
         const ticket = await this.officialService.getQRCodeTicket(query.sceneStr);
         const Url = (0, utils_1.formatUrl)(process.env.weChatMpUrl || 'https://mp.weixin.qq.com');

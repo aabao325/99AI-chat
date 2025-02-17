@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const allExceptions_filter_1 = require("./common/filters/allExceptions.filter");
 const typeOrmQueryFailed_filter_1 = require("./common/filters/typeOrmQueryFailed.filter");
 const transform_interceptor_1 = require("./common/interceptors/transform.interceptor");
+const allExceptions_filter_1 = require("./common/filters/allExceptions.filter");
 const custom_logger_service_1 = require("./common/logger/custom-logger.service");
 const initDatabase_1 = require("./modules/database/initDatabase");
 const common_1 = require("@nestjs/common");
