@@ -13,7 +13,7 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
   npm config set registry https://registry.npmmirror.com && \
   apk add --no-cache --virtual .build-deps git && \
-  npm install -g npm@latest && \
+  npm install -g npm@10.7.0 && \
   npm install --production --no-optional --legacy-peer-deps && \
   npm cache clean --force && \
   apk del .build-deps && \
