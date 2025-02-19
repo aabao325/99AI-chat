@@ -238,13 +238,13 @@ let UserBalanceService = class UserBalanceService {
             remainingAmount -= b[nonMember] - newNonMemberBalance;
         }
         // 在计算所有需要的扣费后检查会员状态
-        const now = new Date();
-        const isMemberActive = b.packageId && b.expirationTime && new Date(b.expirationTime) > now;
+        // const now = new Date();
+        // const isMemberActive = b.packageId && b.expirationTime && new Date(b.expirationTime) > now;
 
-        if (isMemberActive && (deductionType === 1 || deductionType === 2)) {
-            console.log(`会员用户对话，用户ID: ${userId}，会员有效期未到期，不扣积分。`);
-            return;
-        }
+        // if (isMemberActive && (deductionType === 1 || deductionType === 2)) {
+        //     console.log(`会员用户对话，用户ID: ${userId}，会员有效期未到期，不扣积分。`);
+        //     return;
+        // }
         const updateBalance = {
             [member]: newMemberBalance,
             [nonMember]: newNonMemberBalance,
