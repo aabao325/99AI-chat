@@ -36,7 +36,15 @@ let OpenAIChatService = class OpenAIChatService {
         };
         result.networkSearchResult = sanitizedSearchResult;
         try {
-            const isDeepSeekModel = model.includes('deepseek-r1') || model.includes('deepseek-reasoner');
+            // const isDeepSeekModel = model.includes('deepseek-r1') || model.includes('deepseek-reasoner') ;
+            const keywords = [
+                'deepseek-r1',
+                'deepseek-reasoner',
+                'qwq-32b',
+                'claude-3-7-sonnet-thinking'// 新增匹配项
+              ];
+            const isDeepSeekModel = keywords.some(s => model.includes(s));
+              
             let thinkContent = '';
             if (usingDeepThinking || isDeepSeekModel) {
                 const deepUrl = isDeepSeekModel ? proxyUrl : deepThinkingUrl;
